@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Casting Defect Detection</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        .card {
+            border: none;
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            backdrop-filter: blur(10px);
+            background: rgba(255,255,255,0.95);
+        }
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 3rem;
+            text-align: center;
+            transition: all 0.3s ease;
+            background: rgba(102, 126, 234, 0.05);
+        }
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: rgba(118, 75, 162, 0.1);
+        }
+        .upload-area.dragover {
+            border-color: #28a745;
+            background: rgba(40, 167, 69, 0.1);
+        }
+        .result-image {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        .status-ok {
+            color: #28a745;
+            font-weight: bold;
+        }
+        .status-defective {
+            color: #dc3545;
+            font-weight: bold;
+        }
+        .confidence-bar {
+            height: 20px;
+            border-radius: 10px;
+            background: #e9ecef;
+            overflow: hidden;
+        }
+        .confidence-fill {
+            height: 100%;
+            border-radius: 10px;
+            transition: width 0.5s ease;
+        }
+        .model-status {
+            padding: 10px;
+            border-radius: 5px;
+            font-weight: bold;
+        }
+        .model-ready {
+            background: #d4edda;
+            color: #155724;
+        }
+        .model-not-ready {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <div class="container py-5">
+        <!-- Header -->
+        <div class="row mb-5">
+            <div class="col-12 text-center">
+                <h1 class="text-white mb-3">
+                    <i class="fas fa-industry me-3"></i>
+                    Casting Defect Detection
+                </h1>
+                <p class="lead text-white">AI-powered quality inspection for casting products</p>
+                
+                <!-- Model Status -->
+                <div class="model-status {% if model_loaded %}model-ready{% else %}model-not-ready{% endif %} d-inline-block px-4 py-2 rounded">
+                    <i class="fas {% if model_loaded %}fa-check-circle{% else %}fa-exclamation-triangle{% endif %} me-2"></i>
+                    Model: {% if model_loaded %}Ready{% else %}Not Loaded{% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Card -->
+        <div class="row justify-content-center">
+            <div class="col-lg-10">
+                <div class="card">
+                    <div class="card-body p-5">
+                        <!-- Upload Section -->
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h3 class="mb-4">
+                                    <i class="fas fa-upload me-2"></i>
+                                    Upload Image
+                                </h3>
+                                
+                                <!-- Single File Upload -->
+                                <div class="upload-area mb-4" id="uploadArea">
+                                    <i class="fas fa-cloud-upload-alt fa-3x text-primary mb-3"></i>
+                                    <h5>Drag & Drop Image</h5>
+                                    <p class="text-muted">or click to browse</p>
+                                    <input type="file" id="fileInput" accept="image/*" class="d-none">
+                                    <button class="btn btn-primary mt-2" onclick="document.getElementById('fileInput').click()">
+                                        <i class="fas fa-folder-open me-2"></i>Choose File
+                                    </button>
+                                </div>
+
+                                <!-- Batch Upload -->
+                                <div class="mb-4">
+                                    <h5>Batch Upload</h5>
+                                    <input type="file" id="batchInput" accept="image/*" multiple class="form-control">
+                                    <button class="btn btn-outline-primary mt-2 w-100" onclick="uploadBatch()">
+                                        <i class="fas fa-images me-2"></i>Upload Multiple Images
+                                    </button>
+                                </div>
+
+                                <!-- Supported Formats -->
+                                <div class="alert alert-info">
+                                    <small>
+                                        <i class="fas fa-info-circle me-2"></i>
+                                        Supported formats: JPG, JPEG, PNG, BMP (Max: 16MB)
+                                    </small>
+                                </div>
+                            </div>
+
+                            <!-- Results Section -->
+                            <div class="col-md-6">
+                                <h3 class="mb-4">
+                                    <i class="fas fa-chart-bar me-2"></i>
+                                    Prediction Results
+                                </h3>
+                                
+                                <div id="resultsContainer">
+                                    <div class="text-center text-muted py-5">
+                                        <i class="fas fa-search fa-3x mb-3"></i>
+                                        <p>Upload an image to see prediction results</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Batch Results -->
+                        <div class="row mt-4 d-none" id="batchResults">
+                            <div class="col-12">
+                                <h4 class="mb-3">Batch Analysis Results</h4>
+                                <div id="batchResultsContent"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Features Section -->
+        <div class="row mt-5">
+            <div class="col-md-4 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-bolt fa-2x text-primary mb-3"></i>
+                        <h5>Fast Prediction</h5>
+                        <p class="text-muted">Real-time defect detection with AI</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-chart-line fa-2x text-success mb-3"></i>
+                        <h5>High Accuracy</h5>
+                        <p class="text-muted">Trained on industrial casting dataset</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card text-center h-100">
+                    <div class="card-body">
+                        <i class="fas fa-mobile-alt fa-2x text-info mb-3"></i>
+                        <h5>Web Interface</h5>
+                        <p class="text-muted">Access from any device</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        // Drag and drop functionality
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fileInput');
+        const batchInput = document.getElementById('batchInput');
+
+        // Single file upload
+        uploadArea.addEventListener('click', () => fileInput.click());
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                uploadFile(files[0]);
+            }
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            if (e.target.files.length > 0) {
+                uploadFile(e.target.files[0]);
+            }
+        });
+
+        // File upload and prediction
+        function uploadFile(file) {
+            if (!file.type.match('image.*')) {
+                alert('Please upload an image file.');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', file);
+
+            showLoading();
+
+            fetch('/upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    showResults(data);
+                }
+            })
+            .catch(error => {
+                showError('Upload failed: ' + error);
+            });
+        }
+
+        // Batch upload
+        function uploadBatch() {
+            const files = batchInput.files;
+            if (files.length === 0) {
+                alert('Please select at least one image.');
+                return;
+            }
+
+            const formData = new FormData();
+            for (let i = 0; i < files.length; i++) {
+                formData.append('files', files[i]);
+            }
+
+            showLoading();
+
+            fetch('/batch_upload', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    showError(data.error);
+                } else {
+                    showBatchResults(data);
+                }
+            })
+            .catch(error => {
+                showError('Batch upload failed: ' + error);
+            });
+        }
+
+        // Show loading state
+        function showLoading() {
+            document.getElementById('resultsContainer').innerHTML = `
+                <div class="text-center py-4">
+                    <div class="spinner-border text-primary mb-3" role="status"></div>
+                    <p>Analyzing image...</p>
+                </div>
+            `;
+        }
+
+        // Show single results
+        function showResults(data) {
+            const confidencePercent = (data.confidence * 100).toFixed(1);
+            const statusClass = data.prediction === 'OK' ? 'status-ok' : 'status-defective';
+            const statusIcon = data.prediction === 'OK' ? 'fa-check-circle' : 'fa-exclamation-triangle';
+
+            document.getElementById('resultsContainer').innerHTML = `
+                <div class="text-center">
+                    <img src="${data.visualization}" alt="Prediction Result" class="result-image mb-4">
+                    
+                    <div class="row mb-3">
+                        <div class="col-6">
+                            <h5>Prediction</h5>
+                            <div class="${statusClass}">
+                                <i class="fas ${statusIcon} me-2"></i>
+                                ${data.prediction}
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <h5>Confidence</h5>
+                            <div class="fw-bold">${confidencePercent}%</div>
+                        </div>
+                    </div>
+
+                    <div class="confidence-bar mb-3">
+                        <div class="confidence-fill bg-${data.prediction === 'OK' ? 'success' : 'danger'}" 
+                             style="width: ${confidencePercent}%"></div>
+                    </div>
+
+                    <small class="text-muted">File: ${data.filename}</small>
+                </div>
+            `;
+        }
+
+        // Show batch results
+        function showBatchResults(data) {
+            let batchHTML = `
+                <div class="alert alert-info">
+                    <h6>Batch Analysis Summary</h6>
+                    <p>Total: ${data.statistics.total} images | 
+                       OK: ${data.statistics.ok} | 
+                       Defective: ${data.statistics.defective} |
+                       Defect Rate: ${data.statistics.defect_rate}%
+                    </p>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Filename</th>
+                                <th>Prediction</th>
+                                <th>Confidence</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+            `;
+
+            data.results.forEach(result => {
+                if (result.error) {
+                    batchHTML += `
+                        <tr class="table-warning">
+                            <td>${result.filename}</td>
+                            <td colspan="2">Error: ${result.error}</td>
+                        </tr>
+                    `;
+                } else {
+                    const statusClass = result.prediction === 'OK' ? 'status-ok' : 'status-defective';
+                    batchHTML += `
+                        <tr>
+                            <td>${result.filename}</td>
+                            <td class="${statusClass}">${result.prediction}</td>
+                            <td>${(result.confidence * 100).toFixed(1)}%</td>
+                        </tr>
+                    `;
+                }
+            });
+
+            batchHTML += `
+                        </tbody>
+                    </table>
+                </div>
+            `;
+
+            document.getElementById('batchResultsContent').innerHTML = batchHTML;
+            document.getElementById('batchResults').classList.remove('d-none');
+        }
+
+        // Show error
+        function showError(message) {
+            document.getElementById('resultsContainer').innerHTML = `
+                <div class="alert alert-danger text-center">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    ${message}
+                </div>
+            `;
+        }
+    </script>
+</body>
+</html>

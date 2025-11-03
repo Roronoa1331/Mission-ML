@@ -19,3 +19,7 @@ lime>=0.2.0.1
 jupyter>=1.0.0
 ipython>=7.0.0
 
+flask>=2.0.0
+werkzeug>=2.0.0
+pillow>=9.0.0
+
